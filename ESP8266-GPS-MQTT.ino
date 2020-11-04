@@ -6,13 +6,6 @@
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 
-/*
-   This sample sketch demonstrates the normal use of a TinyGPS++ (TinyGPSPlus) object.
-   It requires the use of SoftwareSerial, and assumes that you have a
-   9600-baud serial GPS device hooked up on pins 8(rx) and 9(tx) and a HMC5883 Magnetic Compass
-   connected to the SCL/SDA pins.
-*/
-
 static const int RXPin = D6, TXPin = D7;
 static const uint32_t GPSBaud = 9600;
 
@@ -25,13 +18,13 @@ TinyGPSPlus gps;
 // The serial connection to the NEO-6m GPS module
 SoftwareSerial ss(RXPin, TXPin);
 ///////////////////////////////// set wifi ////////////////////////////////////////////////
-const char* ssid = "PetCE";
-const char* password = "Pet232541";
+const char* ssid = "CEIOT-WIFI";
+const char* password = NULL;
 ///////////////////////////////// set mqtt_server ////////////////////////////////////////////////
-const char* mqtt_server = "tailor.cloudmqtt.com"; //IP Address or Domain ของ MQTT Server
-const char mqtt_username[50] = "nrwkpslr"; //Username ของ MQTT Server
-const char mqtt_password[50] = "1vFxwOFUAvdM"; //Password ของ MQTT Server
-const int mqtt_port = 14382;
+const char* mqtt_server = "172.16.20.12"; //IP Address or Domain ของ MQTT Server
+const char mqtt_username[50] = "admin01"; //Username ของ MQTT Server
+const char mqtt_password[50] = "Passw0rd"; //Password ของ MQTT Server
+const int mqtt_port = 1883;
 WiFiClient espClient;
 PubSubClient client(espClient);
 long lastMsg = 0;
@@ -43,7 +36,7 @@ void setup()
   Serial.println(TinyGPSPlus::libraryVersion());
   setup_wifi();
   client.setServer(mqtt_server, mqtt_port);
-  client.setCallback(callback);
+  //  client.setCallback(callback);
   displaySensorDetails();
 }
 //////////////////////////////////////////////////// WIFI /////////////////////////////////////////////////////////////////////
@@ -61,8 +54,10 @@ void setup_wifi() {
   randomSeed(micros());
   Serial.println("");
   Serial.println("WiFi connected");
-  Serial.println("IP address: ");
+  Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
+  Serial.print("MAC address: ");
+  Serial.println(WiFi.macAddress());
 }
 //////////////////////////////////////////////////// Device /////////////////////////////////////////////////////////////////////
 void displaySensorDetails(void)
@@ -81,22 +76,6 @@ void displaySensorDetails(void)
   Serial.println("");
   delay(3000);
 }
-//////////////////////////////////////////////////// MQTT CALLBACK /////////////////////////////////////////////////////////////////////
-void callback(char* topic, byte* payload, unsigned int length) {
-  Serial.print("Message arrived [");
-  Serial.print(topic);
-  Serial.print("] ");
-  for (int i = 0; i < length; i++) {
-    Serial.print((char)payload[i]);
-  }
-  Serial.println();
-  // Switch on the LED if an 1 was received as first character
-  if ((char)payload[0] == '1') {
-    Serial.print("LOW");
-  } else {
-    Serial.print("HIGH"); // Turn the LED off by making the voltage HIGH
-  }
-}
 //////////////////////////////////////////////////// Reconnect MQTT CALLBACK /////////////////////////////////////////////////////////////////////
 void reconnect() {
   // Loop until we’re reconnected
@@ -106,11 +85,9 @@ void reconnect() {
     String clientId = "ESP8266Client-";
     clientId += String(random(0xffff), HEX);
     // Attempt to connect
-    if (client.connect(clientId.c_str(), mqtt_username, mqtt_password)) {
+    if (client.connect(clientId.c_str())) {
+      //, mqtt_username, mqtt_password
       Serial.println("connected");
-      // Once connected, publish an announcement…
-      client.publish("test/gps", "This is GPS");
-      // … and resubscribe
       client.subscribe("inTopic");
     } else {
       Serial.print("failed, rc=");
@@ -138,85 +115,32 @@ void displayGpsInfo()
     Serial.print(F("INVALID"));
   }
 
-  Serial.print(F("  Date/Time: "));
+  Serial.print(F("  Date:  "));
   // prints the recieved GPS module date if it was decoded in a valid response.
   if (gps.date.isValid())
   {
-    Serial.print(gps.date.month());
-    Serial.print(F("/"));
-    Serial.print(gps.date.day());
-    Serial.print(F("/"));
-    Serial.print(gps.date.year());
+    String DataDate = String(gps.date.day()) + String("/") + String(gps.date.month()) + String("/") + String(gps.date.year());
+    Serial.print(DataDate);
   }
   else
   {
     // prints invalid otherwise.
     Serial.print(F("INVALID"));
   }
-  Serial.print(F(" "));
+  Serial.print(F("  Time:  "));
   // prints the recieved GPS module time if it was decoded in a valid response.
   if (gps.time.isValid())
   {
-    if (gps.time.hour() < 10) Serial.print(F("0"));
-    Serial.print(gps.time.hour());
-    Serial.print(F(":"));
-    if (gps.time.minute() < 10) Serial.print(F("0"));
-    Serial.print(gps.time.minute());
-    Serial.print(F(":"));
-    if (gps.time.second() < 10) Serial.print(F("0"));
-    Serial.print(gps.time.second());
-    Serial.print(F("."));
-    if (gps.time.centisecond() < 10) Serial.print(F("0"));
-    Serial.print(gps.time.centisecond());
+    String DataTime = String(gps.time.hour()) + String(":") + String(gps.time.minute()) + String(":") + String(gps.time.second()) + String(gps.time.centisecond());
+    Serial.print(DataTime);
   }
   else
   {
     // Print invalid otherwise.
     Serial.print(F("INVALID"));
   }
-  Serial.println();
-  if (mag.begin())
-  {
-    displayCompassInfo();
-  }
-}
-//////////////////////////////////////////////////// X,Y,Z /////////////////////////////////////////////////////////////////////
-void displayCompassInfo()
-{
-  /* Get a new sensor event */
-  sensors_event_t event;
-  mag.getEvent(&event);
-
-  /* Display the results (magnetic vector values are in micro-Tesla (uT)) */
-  Serial.print("X: "); Serial.print(event.magnetic.x); Serial.print("  ");
-  Serial.print("Y: "); Serial.print(event.magnetic.y); Serial.print("  ");
-  Serial.print("Z: "); Serial.print(event.magnetic.z); Serial.print("  "); Serial.println("uT");
-
-  // Hold the module so that Z is pointing 'up' and you can measure the heading with x&y
-  // Calculate heading when the magnetometer is level, then correct for signs of axis.
-  float heading = atan2(event.magnetic.y, event.magnetic.x);
-
-  // Once you have your heading, you must then add your 'Declination Angle', which is the 'Error' of the magnetic field in your location.
-  // Find yours here: http://www.magnetic-declination.com/
-  // Mine is: -13* 2' W, which is ~13 Degrees, or (which we need) 0.22 radians
-  // If you cannot find your Declination, comment out these two lines, your compass will be slightly off.
-  float declinationAngle = 0.05;
-  heading += declinationAngle;
-
-  // Correct for when signs are reversed.
-  if (heading < 0)
-    heading += 2 * PI;
-
-  // Check for wrap due to addition of declination.
-  if (heading > 2 * PI)
-    heading -= 2 * PI;
-
-  // Convert radians to degrees for readability.
-  float headingDegrees = heading * 180 / M_PI;
-
-  Serial.print("Heading (degrees): "); Serial.println(headingDegrees);
-
-  delay(3000);
+  Serial.println("");
+  delay(5000);
 }
 //////////////////////////////////////////////////// LOOP /////////////////////////////////////////////////////////////////////
 void loop()
@@ -230,9 +154,10 @@ void loop()
     reconnect();
   }
   client.loop();
-  if (gps.location.isValid())
+  if (gps.location.isValid() && gps.date.isValid() && gps.time.isValid())
   {
-    client.publish("test/gps", String(gps.location.lat(), 6).c_str());
-    client.publish("test/gps", String(gps.location.lng(), 6).c_str());
+    String local = String(WiFi.macAddress()) + "," + String(gps.location.lat(), 6) + "," + String(gps.location.lng(), 6);
+    client.publish("GPS/Locate", local.c_str());
+    delay(5000);
   }
 }
